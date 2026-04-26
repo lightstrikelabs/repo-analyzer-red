@@ -12,7 +12,7 @@ Open http://localhost:3000.
 
 ## Notes
 
-- The analyzer shallow-clones public GitHub repos into a temporary directory.
+- The analyzer downloads public GitHub repo archives into a temporary directory.
 - The OpenRouter key is submitted only to the local API routes for report enrichment and follow-up answers.
 - If no OpenRouter key is provided, the app still generates a deterministic static report.
 - The default OpenRouter model is `openrouter/free`; change it from the Advanced section.

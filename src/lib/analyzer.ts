@@ -1,10 +1,7 @@
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { extract } from "tar";
 
 export const DEFAULT_OPENROUTER_MODEL = "openrouter/free";
 
@@ -269,10 +266,7 @@ export async function analyzeRepository(
   const repoDir = path.join(tempRoot, "repo");
 
   try {
-    await execFileAsync("git", ["clone", "--depth", "1", parsed.cloneUrl, repoDir], {
-      timeout: 45_000,
-      maxBuffer: 1024 * 1024 * 4,
-    });
+    await downloadRepositoryArchive(parsed.owner, parsed.name, repoDir);
 
     const snapshot = await buildSnapshot(repoDir, parsed.owner, parsed.name, parsed.webUrl);
     const report = buildReport(snapshot);
@@ -297,7 +291,7 @@ export async function buildRepositorySearchContext({
   section: ReportSection;
 }) {
   const parsed = parseGitHubUrl(repoUrl);
-  const repoDir = await ensureCachedRepository(parsed.cloneUrl, parsed.owner, parsed.name);
+  const repoDir = await ensureCachedRepository(parsed.owner, parsed.name);
   const files = await collectSearchFiles(repoDir);
   const terms = tokenizeSearch(`${query} ${section.title} ${section.summary}`);
   const ranked = files
@@ -337,20 +331,19 @@ function parseGitHubUrl(input: string) {
   return {
     owner,
     name,
-    cloneUrl: `https://github.com/${owner}/${name}.git`,
     webUrl: `https://github.com/${owner}/${name}`,
   };
 }
 
-async function ensureCachedRepository(cloneUrl: string, owner: string, name: string) {
+async function ensureCachedRepository(owner: string, name: string) {
   const cacheRoot = path.join(tmpdir(), "repo-quality-cache");
   const repoDir = path.join(cacheRoot, sanitizeCacheName(`${owner}-${name}`));
+  const markerFile = path.join(repoDir, ".repo-quality-cache.json");
 
   await mkdir(cacheRoot, { recursive: true });
 
-  const gitDir = path.join(repoDir, ".git");
-  const exists = await stat(gitDir)
-    .then((result) => result.isDirectory())
+  const exists = await stat(markerFile)
+    .then((result) => result.isFile())
     .catch(() => false);
 
   if (exists) {
@@ -358,12 +351,43 @@ async function ensureCachedRepository(cloneUrl: string, owner: string, name: str
   }
 
   await rm(repoDir, { recursive: true, force: true });
-  await execFileAsync("git", ["clone", "--depth", "1", cloneUrl, repoDir], {
-    timeout: 45_000,
-    maxBuffer: 1024 * 1024 * 4,
-  });
+  await downloadRepositoryArchive(owner, name, repoDir);
 
   return repoDir;
+}
+
+async function downloadRepositoryArchive(owner: string, name: string, destination: string) {
+  await mkdir(destination, { recursive: true });
+
+  const archiveUrl = `https://codeload.github.com/${owner}/${name}/tar.gz/HEAD`;
+  const response = await fetch(archiveUrl, {
+    headers: {
+      Accept: "application/x-gzip",
+      "User-Agent": "repo-analyzer-red",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Unable to download GitHub repository archive (${response.status}).`);
+  }
+
+  const archivePath = path.join(tmpdir(), `repo-quality-${sanitizeCacheName(`${owner}-${name}`)}-${Date.now()}.tgz`);
+  const archive = Buffer.from(await response.arrayBuffer());
+  await writeFile(archivePath, archive);
+
+  try {
+    await extract({
+      file: archivePath,
+      cwd: destination,
+      strip: 1,
+    });
+    await writeFile(
+      path.join(destination, ".repo-quality-cache.json"),
+      JSON.stringify({ owner, name, cachedAt: new Date().toISOString() }),
+    );
+  } finally {
+    await rm(archivePath, { force: true });
+  }
 }
 
 async function collectSearchFiles(root: string) {
