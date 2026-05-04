@@ -4,6 +4,8 @@ import {
   BarChart3,
   Boxes,
   ChevronDown,
+  Eye,
+  EyeOff,
   FileText,
   GitBranch,
   KeyRound,
@@ -97,6 +99,7 @@ const sectionIcons: Record<SectionId, typeof Wrench> = {
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [model, setModel] = useState(DEFAULT_OPENROUTER_MODEL);
   const [report, setReport] = useState<RepoReport | null>(null);
   const [error, setError] = useState("");
@@ -406,7 +409,7 @@ export default function Home() {
                   onChange={(event) => setApiKey(event.target.value)}
                   className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-[#8f887b]"
                   placeholder="OpenRouter API key"
-                  type="password"
+                  type={apiKeyVisible ? "text" : "password"}
                   autoCapitalize="none"
                   autoCorrect="off"
                   autoComplete="new-password"
@@ -414,6 +417,19 @@ export default function Home() {
                   data-lpignore="true"
                   spellCheck={false}
                 />
+                <button
+                  type="button"
+                  onClick={() => setApiKeyVisible((visible) => !visible)}
+                  className="shrink-0 text-[#7b7468] transition hover:text-[#3f3b35]"
+                  aria-label={apiKeyVisible ? "Hide OpenRouter API key" : "Show OpenRouter API key"}
+                  aria-pressed={apiKeyVisible}
+                >
+                  {apiKeyVisible ? (
+                    <EyeOff className="h-5 w-5" aria-hidden="true" />
+                  ) : (
+                    <Eye className="h-5 w-5" aria-hidden="true" />
+                  )}
+                </button>
               </label>
 
               <button
